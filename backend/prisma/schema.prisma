@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(STUDENT)
+  status    String   @default("ACTIVE") // ACTIVE, SUSPENDED
+  groupId   Int?
+  group     Group?   @relation(fields: [groupId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  results          Result[]
+  proctoringEvents ProctoringEvent[]
+  invitations      ExamInvitation[]
+}
+
+model Group {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  
+  users       User[]
+  exams       Exam[]
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+model Exam {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  duration    Int      // Duration in minutes
+  startTime   DateTime?
+  endTime     DateTime?
+  groupId     Int?
+  group       Group?   @relation(fields: [groupId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions        Question[]
+  results          Result[]
+  proctoringEvents ProctoringEvent[]
+  invitations      ExamInvitation[]
+}
+
+model ExamInvitation {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  status    String   @default("PENDING") // PENDING, USED
+  examId    Int
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Question {
+  id            Int      @id @default(autoincrement())
+  text          String   @db.Text
+  type          QuestionType @default(MCQ)
+  options       Json?    // Array of options for MCQ
+  correctAnswer String
+  examId        Int
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum QuestionType {
+  MCQ
+  TRUE_FALSE
+  SHORT_ANSWER
+}
+
+model Result {
+  id        Int      @id @default(autoincrement())
+  score     Float?
+  status    String   @default("IN_PROGRESS") // IN_PROGRESS, SUBMITTED, FORCE_SUBMITTED
+  startTime DateTime @default(now())
+  answers   Json?    // Submitted answers
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examId    Int
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([userId, examId])
+}
+
+model ProctoringEvent {
+  id          Int      @id @default(autoincrement())
+  eventType   String   // e.g., NO_FACE, MULTIPLE_FACES
+  screenshot  String?  @db.LongText // Base64 image
+  timestamp   DateTime @default(now())
+  severity    String   // LOW, MEDIUM, HIGH
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examId      Int
+  exam        Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+}
