@@ -207,7 +207,7 @@ router.post('/:examId/autosave', authenticate, async (req, res) => {
 // Student: Submit Exam Result
 router.post('/:examId/submit', authenticate, requireSEB, async (req, res) => {
   const { examId } = req.params;
-  const { score, answers, force } = req.body;
+  const { answers, force } = req.body;
   try {
     // Verify it's not already submitted
     const existing = await prisma.result.findUnique({
@@ -218,13 +218,34 @@ router.post('/:examId/submit', authenticate, requireSEB, async (req, res) => {
       return res.status(403).json({ message: 'Exam not in progress or already submitted' });
     }
 
-    // (In a real scenario, calculate score here by checking answers against Question.correctAnswer)
+    // Fetch the exam questions to grade the answers
+    const exam = await prisma.exam.findUnique({
+      where: { id: parseInt(examId) },
+      include: { questions: true }
+    });
+
+    if (!exam) return res.status(404).json({ message: 'Exam not found' });
+
+    let correctCount = 0;
+    const totalQuestions = exam.questions.length;
+
+    if (totalQuestions > 0) {
+      exam.questions.forEach(q => {
+        // answers object is { [questionId]: "Selected Option" }
+        if (answers && answers[q.id] === q.correctAnswer) {
+          correctCount++;
+        }
+      });
+    }
+
+    // Calculate percentage score (rounded to nearest integer)
+    const finalScore = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
 
     const result = await prisma.result.update({
       where: { id: existing.id },
       data: {
-        score: parseFloat(score) || 0,
-        answers: answers,
+        score: finalScore,
+        answers: answers || {},
         status: force ? 'FORCE_SUBMITTED' : 'SUBMITTED'
       }
     });

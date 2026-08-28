@@ -5,7 +5,7 @@ import { io } from 'socket.io-client';
 import WebcamMonitor from '../../components/Proctoring/WebcamMonitor';
 import { LogOut, Maximize, WifiOff, CheckCircle, ShieldAlert } from 'lucide-react';
 
-const socket = io((import.meta.env.VITE_API_URL || 'http://localhost:5000') + '');
+const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
 export default function ExamRoom() {
   const { examId } = useParams();
@@ -58,7 +58,7 @@ export default function ExamRoom() {
   useEffect(() => {
     const fetchExam = async () => {
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}`, getAuthHeaders());
+        const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}`, getAuthHeaders());
         setExam(res.data);
       } catch (err) {
         console.error('Error fetching exam', err);
@@ -81,7 +81,7 @@ export default function ExamRoom() {
     if (!started) return;
     try {
       socket.emit('proctor_alert', { examId, eventType, severity, screenshot, timestamp: new Date() });
-      await axios.post(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}/proctor`, {
+      await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/proctor`, {
         eventType, severity, screenshot
       }, getAuthHeaders());
     } catch (err) {
@@ -126,7 +126,7 @@ export default function ExamRoom() {
     
     // Autosave every 60s
     const autosave = setInterval(() => {
-      axios.post(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}/autosave`, { answers }, getAuthHeaders()).catch(console.error);
+      axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/autosave`, { answers }, getAuthHeaders()).catch(console.error);
     }, 60000);
 
     return () => {
@@ -157,7 +157,7 @@ export default function ExamRoom() {
         await document.documentElement.requestFullscreen();
       }
       
-      const res = await axios.post(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}/start${getBypassQuery()}`, {}, getAuthHeaders());
+      const res = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/start${getBypassQuery()}`, {}, getAuthHeaders());
       
       // Calculate time left from backend startTime
       const start = new Date(res.data.startTime).getTime();
@@ -198,9 +198,7 @@ export default function ExamRoom() {
     }
 
     try {
-      const score = Math.floor(Math.random() * 100); // placeholder grading
-      await axios.post(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}/submit${getBypassQuery()}`, {
-        score,
+      await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/submit${getBypassQuery()}`, {
         answers,
         force
       }, getAuthHeaders());

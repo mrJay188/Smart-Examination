@@ -67,4 +67,15 @@ const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  
+  // Keep-alive ping to prevent Render free-tier from sleeping
+  const selfUrl = process.env.RENDER_EXTERNAL_URL;
+  if (selfUrl) {
+    console.log(`Keep-alive enabled for ${selfUrl}`);
+    setInterval(() => {
+      fetch(`${selfUrl}/api/health`)
+        .then(res => console.log(`[Keep-Alive] Pinged self successfully at ${new Date().toISOString()}`))
+        .catch(err => console.error(`[Keep-Alive] Ping failed:`, err.message));
+    }, 14 * 60 * 1000); // Ping every 14 minutes
+  }
 });
