@@ -72,13 +72,17 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   
-  // Keep-alive ping (Internal)
-  // Calling its own API internally to maintain active process state
-  const internalUrl = `http://localhost:${PORT}`;
-  console.log(`Keep-alive enabled internally for ${internalUrl}`);
-  setInterval(() => {
-    fetch(`${internalUrl}/api/health`)
-      .then(res => console.log(`[Keep-Alive] Pinged self successfully at ${new Date().toISOString()}`))
-      .catch(err => console.error(`[Keep-Alive] Ping failed:`, err.message));
-  }, 14 * 60 * 1000); // Ping every 14 minutes
+  // Keep-alive ping to prevent Render free-tier from sleeping
+  // We must hit the EXTERNAL url, because hitting localhost bypasses Render's load balancer, which won't reset the idle timer.
+  const selfUrl = process.env.RENDER_EXTERNAL_URL;
+  if (selfUrl) {
+    console.log(`Keep-alive enabled for external URL: ${selfUrl}`);
+    setInterval(() => {
+      fetch(`${selfUrl}/api/health`)
+        .then(res => console.log(`[Keep-Alive] Pinged external API successfully at ${new Date().toISOString()}`))
+        .catch(err => console.error(`[Keep-Alive] Ping failed:`, err.message));
+    }, 14 * 60 * 1000); // Ping every 14 minutes
+  } else {
+    console.log('Keep-alive disabled (RENDER_EXTERNAL_URL not set)');
+  }
 });
