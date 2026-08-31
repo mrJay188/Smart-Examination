@@ -46,6 +46,7 @@ model Exam {
   duration    Int      // Duration in minutes
   startTime   DateTime?
   endTime     DateTime?
+  randomizedQuestionCount Int? // If null, serve all questions. If Int, randomly pick this many.
   groupId     Int?
   group       Group?   @relation(fields: [groupId], references: [id])
   createdAt   DateTime @default(now())
@@ -92,6 +93,7 @@ model Result {
   status    String   @default("IN_PROGRESS") // IN_PROGRESS, SUBMITTED, FORCE_SUBMITTED
   startTime DateTime @default(now())
   answers   Json?    // Submitted answers
+  assignedQuestions Json? // Array of question IDs assigned to this student for this exam
   userId    Int
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   examId    Int

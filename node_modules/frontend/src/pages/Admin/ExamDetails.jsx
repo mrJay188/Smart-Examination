@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-import { ArrowLeft, Plus, Trash2, AlertCircle, Edit, Ban, Link as LinkIcon, X, DownloadCloud } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, AlertCircle, Edit, Ban, Link as LinkIcon, X, DownloadCloud, ChevronRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 const socket = io((import.meta.env.VITE_API_URL || 'http://localhost:5000') + '');
@@ -26,10 +26,9 @@ export default function ExamDetails() {
     fetchExamDetails();
     fetchResults();
 
-    // Socket.io for live proctoring alerts
     socket.emit('join_exam', { examId });
     socket.on('admin_alert', (data) => {
-      setLiveAlerts(prev => [data, ...prev].slice(0, 5)); // Keep last 5 alerts
+      setLiveAlerts(prev => [data, ...prev].slice(0, 5));
     });
 
     return () => socket.off('admin_alert');
@@ -37,7 +36,7 @@ export default function ExamDetails() {
 
   const fetchExamDetails = async () => {
     try {
-      const res = await axios.get(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}`, {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       setExam(res.data);
@@ -48,7 +47,7 @@ export default function ExamDetails() {
 
   const fetchResults = async () => {
     try {
-      const res = await axios.get(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}/results`, {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/results`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       setResults(res.data);
@@ -67,7 +66,7 @@ export default function ExamDetails() {
       }
 
       if (editingQuestionId) {
-        await axios.put(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}/questions/${editingQuestionId}`, {
+        await axios.put(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/questions/${editingQuestionId}`, {
           text: qText,
           options: options,
           correctAnswer: qCorrect
@@ -75,7 +74,7 @@ export default function ExamDetails() {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         });
       } else {
-        await axios.post(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}/questions`, {
+        await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/questions`, {
           text: qText,
           type: 'MCQ',
           options: options,
@@ -103,7 +102,6 @@ export default function ExamDetails() {
   const startEditQuestion = (q) => {
     setEditingQuestionId(q.id);
     setQText(q.text);
-    // Pad options to 4 inputs
     const paddedOptions = [...q.options];
     while (paddedOptions.length < 4) paddedOptions.push('');
     setQOptions(paddedOptions);
@@ -114,7 +112,7 @@ export default function ExamDetails() {
   const handleDeleteQuestion = async (questionId) => {
     if (!window.confirm("Are you sure you want to delete this question?")) return;
     try {
-      await axios.delete(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}/questions/${questionId}`, {
+      await axios.delete(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/questions/${questionId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       fetchExamDetails();
@@ -125,7 +123,7 @@ export default function ExamDetails() {
 
   const handleGenerateInvite = async (userId) => {
     try {
-      const res = await axios.post(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/exams/${examId}/invite`, { userId }, {
+      const res = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/invite`, { userId }, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       alert(`Invite Link Generated (Copy to clipboard):\n\n${res.data.inviteUrl}`);
@@ -139,6 +137,13 @@ export default function ExamDetails() {
     if (window.confirm("Are you absolutely sure you want to terminate this student's exam immediately?")) {
       socket.emit('terminate_student', { userId });
       alert('Termination command sent to student.');
+    }
+  };
+
+  const handleSendWarning = (userId) => {
+    if (window.confirm("Send a full-screen warning to this student?")) {
+      socket.emit('send_warning', { userId });
+      alert('Warning sent.');
     }
   };
 
@@ -158,7 +163,6 @@ export default function ExamDetails() {
     link.click();
   };
 
-  // Prepare data for Score Distribution Chart
   const scoreDistribution = [
     { range: '0-20%', count: 0 },
     { range: '21-40%', count: 0 },
@@ -175,77 +179,91 @@ export default function ExamDetails() {
     else scoreDistribution[4].count++;
   });
 
-  if (!exam) return <div className="p-10 flex justify-center text-muted-foreground">Loading Exam Data...</div>;
+  if (!exam) return (
+    <div className="h-screen w-full flex justify-center items-center bg-zinc-50">
+      <div className="w-8 h-8 border-4 border-black border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  );
 
   return (
-    <div className="flex min-h-screen flex-col bg-background p-6 md:p-10">
-      <button 
-        onClick={() => navigate('/admin/dashboard')}
-        className="flex items-center text-sm font-medium text-muted-foreground hover:text-foreground mb-6 w-fit transition-colors"
-      >
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
-      </button>
+    <div className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900 font-sans">
+      
+      {/* Header */}
+      <header className="flex h-16 shrink-0 items-center border-b border-black/10 bg-white px-8 shadow-sm">
+        <button 
+          onClick={() => navigate('/admin/dashboard')}
+          className="flex items-center text-sm font-bold text-zinc-500 hover:text-black transition-colors"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+        </button>
+        <div className="w-px h-6 bg-black/10 mx-6"></div>
+        <h1 className="text-xl font-bold text-black truncate">{exam.title}</h1>
+        <span className="ml-4 px-2.5 py-1 bg-zinc-100 text-zinc-600 rounded-full text-xs font-bold border border-black/5">
+          {exam.duration} Minutes
+        </span>
+      </header>
 
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">{exam.title}</h1>
-          <p className="text-muted-foreground mt-1">Duration: {exam.duration} mins</p>
-        </div>
-      </div>
-
-      <div className="grid gap-8 lg:grid-cols-2">
-        {/* Left Column: Questions */}
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Questions ({exam.questions?.length || 0})</h2>
+      <div className="flex-1 p-6 md:p-10 max-w-[1400px] mx-auto w-full grid gap-10 lg:grid-cols-[1fr_400px] xl:grid-cols-[1fr_500px]">
+        
+        {/* Left Column: Questions Management */}
+        <div className="space-y-8">
+          <div className="flex items-center justify-between bg-white p-6 rounded-2xl shadow-sm border border-black/5">
+            <div>
+              <h2 className="text-2xl font-bold text-black">Exam Questions</h2>
+              <p className="text-sm text-zinc-500 mt-1">Total questions configured: <strong className="text-black">{exam.questions?.length || 0}</strong></p>
+            </div>
             <button 
               onClick={() => { resetForm(); setIsAddingQuestion(true); }}
-              className="flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm font-medium hover:bg-secondary/80 transition-colors"
+              className="flex items-center gap-2 rounded-xl bg-black px-5 py-2.5 text-sm font-bold text-white hover:bg-zinc-800 transition-all shadow-md hover:-translate-y-0.5"
             >
               <Plus className="h-4 w-4" /> Add Question
             </button>
           </div>
 
           {isAddingQuestion && (
-            <form onSubmit={handleSaveQuestion} className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
-              <h3 className="font-medium text-lg">{editingQuestionId ? 'Edit Question' : 'New Question'}</h3>
+            <form onSubmit={handleSaveQuestion} className="rounded-3xl border border-black/10 bg-white p-8 shadow-lg space-y-6 relative overflow-hidden animate-in fade-in zoom-in duration-300">
+              <div className="absolute top-0 left-0 w-1 h-full bg-black"></div>
+              <h3 className="font-bold text-xl text-black">{editingQuestionId ? 'Edit Question' : 'New Question'}</h3>
               <div>
-                <label className="block text-sm font-medium mb-1">Question Text</label>
+                <label className="block text-sm font-bold mb-2">Question Text</label>
                 <textarea
                   required
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-[80px]"
+                  className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black min-h-[100px]"
                   value={qText}
                   onChange={e => setQText(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium">Options</label>
+              <div className="space-y-3">
+                <label className="block text-sm font-bold">Multiple Choice Options</label>
                 {qOptions.map((opt, idx) => (
-                  <input
-                    key={idx}
-                    placeholder={`Option ${idx + 1}`}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    value={opt}
-                    onChange={e => {
-                      const newOpts = [...qOptions];
-                      newOpts[idx] = e.target.value;
-                      setQOptions(newOpts);
-                    }}
-                  />
+                  <div key={idx} className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-zinc-400 uppercase w-6">{(idx + 1).toString().padStart(2, '0')}</span>
+                    <input
+                      placeholder={`Option ${idx + 1}`}
+                      className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                      value={opt}
+                      onChange={e => {
+                        const newOpts = [...qOptions];
+                        newOpts[idx] = e.target.value;
+                        setQOptions(newOpts);
+                      }}
+                    />
+                  </div>
                 ))}
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Correct Answer (must match an option)</label>
+              <div className="pt-2">
+                <label className="block text-sm font-bold mb-2 text-black">Correct Answer</label>
                 <input
                   required
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="Must exactly match one of the options above"
+                  className="w-full rounded-xl border-2 border-black/20 bg-white px-4 py-3 text-sm font-medium focus:border-black focus:outline-none"
                   value={qCorrect}
                   onChange={e => setQCorrect(e.target.value)}
                 />
               </div>
-              <div className="flex justify-end gap-2 mt-2">
-                <button type="button" onClick={resetForm} className="rounded-md px-4 py-2 text-sm font-medium hover:bg-secondary">Cancel</button>
-                <button type="submit" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+              <div className="flex justify-end gap-3 pt-6 border-t border-black/5 mt-6">
+                <button type="button" onClick={resetForm} className="rounded-xl px-6 py-2.5 text-sm font-bold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-colors">Cancel</button>
+                <button type="submit" className="rounded-xl bg-black px-6 py-2.5 text-sm font-bold text-white hover:bg-zinc-800 shadow-md transition-all">
                   {editingQuestionId ? 'Update Question' : 'Save Question'}
                 </button>
               </div>
@@ -254,49 +272,64 @@ export default function ExamDetails() {
 
           <div className="space-y-4">
             {exam.questions?.map((q, i) => (
-              <div key={q.id} className="relative rounded-lg border border-border bg-card p-4 group transition-colors hover:border-primary/50">
-                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => startEditQuestion(q)} className="text-muted-foreground hover:text-primary"><Edit className="w-4 h-4" /></button>
-                  <button onClick={() => handleDeleteQuestion(q.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
+              <div key={q.id} className="relative rounded-2xl border border-black/10 bg-white p-6 shadow-sm group transition-all hover:shadow-md hover:border-black/30">
+                <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => startEditQuestion(q)} className="p-2 bg-zinc-100 hover:bg-black hover:text-white rounded-lg text-zinc-600 transition-colors"><Edit className="w-4 h-4" /></button>
+                  <button onClick={() => handleDeleteQuestion(q.id)} className="p-2 bg-red-50 hover:bg-red-500 hover:text-white rounded-lg text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
-                <p className="font-medium text-sm mb-2 pr-12">{i + 1}. {q.text}</p>
-                <ul className="text-sm text-muted-foreground space-y-1 pl-4 list-disc">
-                  {q.options.map((opt, idx) => (
-                    <li key={idx} className={opt === q.correctAnswer ? 'text-primary font-semibold' : ''}>
-                      {opt} {opt === q.correctAnswer && '(Correct)'}
-                    </li>
-                  ))}
-                </ul>
+                <div className="flex gap-4">
+                  <span className="font-extrabold text-2xl text-zinc-200 mt-[-4px]">{(i + 1).toString().padStart(2, '0')}</span>
+                  <div className="flex-1">
+                    <p className="font-semibold text-base mb-4 pr-16 text-black">{q.text}</p>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {q.options.map((opt, idx) => (
+                        <div key={idx} className={`p-3 rounded-xl border text-sm font-medium ${opt === q.correctAnswer ? 'bg-black text-white border-black' : 'bg-zinc-50 border-black/5 text-zinc-600'}`}>
+                          {opt} {opt === q.correctAnswer && ' (Correct)'}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
             {exam.questions?.length === 0 && !isAddingQuestion && (
-              <p className="text-muted-foreground text-sm text-center py-6 border border-dashed rounded-lg">No questions added yet.</p>
+              <div className="py-16 border-2 border-dashed border-black/10 rounded-3xl bg-zinc-50 text-center">
+                <p className="text-zinc-500 font-medium">No questions added yet.</p>
+              </div>
             )}
           </div>
         </div>
 
         {/* Right Column: Results & Proctoring */}
-        <div className="space-y-6">
+        <div className="space-y-8">
+          
           <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold flex items-center gap-2">Live Results & Intervention <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-destructive"></span></span></h2>
-            <button onClick={exportToCSV} disabled={results.length === 0} className="flex items-center gap-2 text-sm bg-secondary px-3 py-1.5 rounded-md hover:bg-secondary/80 font-medium transition-colors disabled:opacity-50">
-              <DownloadCloud className="w-4 h-4" /> Export CSV
+            <h2 className="text-xl font-bold flex items-center gap-3 text-black">
+              Live Monitor 
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-40"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-black"></span>
+              </span>
+            </h2>
+            <button onClick={exportToCSV} disabled={results.length === 0} className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider bg-white border border-black/20 text-black px-4 py-2 rounded-lg hover:bg-zinc-50 transition-colors shadow-sm disabled:opacity-50">
+              <DownloadCloud className="w-4 h-4" /> Export
             </button>
           </div>
           
           {/* Live Alerts Feed */}
           {liveAlerts.length > 0 && (
-            <div className="rounded-xl border border-destructive/50 bg-destructive/10 p-4 shadow-sm mb-6">
-              <h3 className="font-semibold text-destructive flex items-center gap-2 mb-3"><AlertCircle className="w-4 h-4"/> Live Proctoring Alerts</h3>
+            <div className="rounded-2xl border-2 border-red-500 bg-white p-5 shadow-lg relative overflow-hidden animate-in slide-in-from-top-2">
+              <div className="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
+              <h3 className="font-bold text-red-600 flex items-center gap-2 mb-4"><AlertCircle className="w-5 h-5"/> Live AI Alerts</h3>
               <div className="space-y-3">
                 {liveAlerts.map((alert, idx) => (
-                  <div key={idx} className="flex gap-4 p-3 bg-card rounded-md border border-border text-sm">
+                  <div key={idx} className="flex gap-4 p-3 bg-red-50/50 rounded-xl border border-red-100 text-sm">
                     {alert.screenshot && (
-                      <img src={alert.screenshot} alt="Cheating proof" className="w-24 h-16 object-cover rounded bg-muted" />
+                      <img src={alert.screenshot} alt="Proof" className="w-20 h-14 object-cover rounded-lg border border-red-200" />
                     )}
                     <div>
-                      <p className="font-bold text-destructive">{alert.eventType}</p>
-                      <p className="text-muted-foreground text-xs mt-1">Severity: {alert.severity} | Time: {new Date(alert.timestamp).toLocaleTimeString()}</p>
+                      <p className="font-bold text-red-700">{alert.eventType.replace(/_/g, ' ')}</p>
+                      <p className="text-red-500/70 text-xs mt-1 font-medium">{alert.severity} RISK • {new Date(alert.timestamp).toLocaleTimeString()}</p>
                     </div>
                   </div>
                 ))}
@@ -306,121 +339,142 @@ export default function ExamDetails() {
 
           {/* Analytics Chart */}
           {results.length > 0 && (
-            <div className="rounded-xl border border-border bg-card shadow-sm p-5 mb-6">
-              <h3 className="font-semibold mb-4 text-sm text-muted-foreground">Score Distribution</h3>
+            <div className="rounded-2xl border border-black/10 bg-white shadow-sm p-6">
+              <h3 className="font-bold text-sm text-black mb-6">Score Distribution Curve</h3>
               <div className="h-48 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={scoreDistribution}>
-                    <XAxis dataKey="range" fontSize={12} tickLine={false} axisLine={false} stroke="currentColor" className="text-muted-foreground" />
-                    <YAxis allowDecimals={false} fontSize={12} tickLine={false} axisLine={false} stroke="currentColor" className="text-muted-foreground" />
-                    <Tooltip cursor={{fill: 'var(--secondary)'}} contentStyle={{ borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--card)', color: 'var(--foreground)' }} />
-                    <Bar dataKey="count" fill="currentColor" className="text-primary" radius={[4, 4, 0, 0]} />
+                    <XAxis dataKey="range" fontSize={11} tickLine={false} axisLine={false} stroke="#a1a1aa" />
+                    <Tooltip cursor={{fill: '#f4f4f5'}} contentStyle={{ borderRadius: '12px', border: '1px solid #e4e4e7', backgroundColor: '#fff', color: '#000', fontWeight: 'bold' }} />
+                    <Bar dataKey="count" fill="#000" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
           )}
 
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
-             <table className="w-full text-sm text-left">
-               <thead className="text-xs uppercase bg-secondary text-secondary-foreground">
-                 <tr>
-                   <th className="px-4 py-3 rounded-tl-md">Student</th>
-                   <th className="px-4 py-3">Score</th>
-                   <th className="px-4 py-3">AI Flags</th>
-                   <th className="px-4 py-3 rounded-tr-md">Intervention</th>
-                 </tr>
-               </thead>
-               <tbody className="divide-y divide-border">
-                 {results.map((result) => (
-                   <tr key={result.id} className="hover:bg-accent/50 transition-colors">
-                     <td className="px-4 py-3">
-                        <p className="font-medium">{result.user.name}</p>
-                        <p className="text-xs text-muted-foreground">{result.user.email}</p>
-                     </td>
-                     <td className="px-4 py-3 font-semibold">{result.score}%</td>
-                     <td className="px-4 py-3">
-                       {result.flags.length > 0 ? (
-                         <div className="flex flex-col gap-1">
-                           <button onClick={() => setEvidenceModal({ isOpen: true, studentName: result.user.name, flags: result.flags })} className="inline-flex items-center w-fit gap-1 text-xs font-bold text-destructive bg-destructive/10 px-2 py-1 rounded-full hover:bg-destructive/20 transition-colors cursor-pointer border-none text-left">
-                             <AlertCircle className="w-3 h-3" /> {result.flags.length} Flags (View Proof)
-                           </button>
-                         </div>
-                       ) : (
-                         <span className="text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full">Clean</span>
-                       )}
-                     </td>
-                     <td className="px-4 py-3">
-                       <div className="flex gap-2">
-                         <button onClick={() => handleTerminateStudent(result.userId)} className="text-destructive hover:bg-destructive/10 p-2 rounded-md transition-colors" title="Terminate Exam">
-                           <Ban className="w-4 h-4" />
-                         </button>
-                         <button onClick={() => handleGenerateInvite(result.userId)} className="text-primary hover:bg-primary/10 p-2 rounded-md transition-colors" title="Generate Retake Invite Link">
-                           <LinkIcon className="w-4 h-4" />
-                         </button>
-                       </div>
-                     </td>
-                   </tr>
-                 ))}
-                 {results.length === 0 && (
-                   <tr>
-                     <td colSpan="4" className="text-center py-8 text-muted-foreground border-dashed border-t">No students have submitted this exam yet.</td>
-                   </tr>
-                 )}
-               </tbody>
-             </table>
+          {/* Submissions Table */}
+          <div className="rounded-2xl border border-black/10 bg-white shadow-sm overflow-hidden flex flex-col max-h-[600px]">
+             <div className="p-5 border-b border-black/10 bg-zinc-50">
+               <h3 className="font-bold text-sm text-black">Recent Submissions ({results.length})</h3>
+             </div>
+             <div className="overflow-y-auto flex-1">
+               <table className="w-full text-sm text-left">
+                 <tbody className="divide-y divide-black/5">
+                   {results.map((result) => (
+                     <tr key={result.id} className="hover:bg-zinc-50 transition-colors">
+                       <td className="px-5 py-4">
+                          <p className="font-bold text-black">{result.user.name}</p>
+                          <p className="text-xs text-zinc-500 mt-0.5">{result.user.email}</p>
+                       </td>
+                       <td className="px-5 py-4 text-center">
+                          <span className="text-lg font-extrabold text-black">{result.score}%</span>
+                       </td>
+                       <td className="px-5 py-4 text-right">
+                         {result.flags.length > 0 ? (
+                           <div className="flex flex-col items-end gap-2">
+                             <button onClick={() => setEvidenceModal({ isOpen: true, studentName: result.user.name, flags: result.flags })} className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors shadow-sm">
+                               <AlertCircle className="w-3.5 h-3.5" /> {result.flags.length} Incidents
+                             </button>
+                             <div className="flex gap-1">
+                               <button onClick={() => handleSendWarning(result.userId)} className="p-1.5 text-zinc-400 hover:text-amber-500 hover:bg-amber-50 rounded" title="Send Live Warning"><AlertCircle className="w-4 h-4"/></button>
+                               <button onClick={() => handleTerminateStudent(result.userId)} className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded" title="Terminate Exam"><Ban className="w-4 h-4"/></button>
+                               <button onClick={() => handleGenerateInvite(result.userId)} className="p-1.5 text-zinc-400 hover:text-black hover:bg-zinc-100 rounded" title="Retake Invite"><LinkIcon className="w-4 h-4"/></button>
+                             </div>
+                           </div>
+                         ) : (
+                           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-black bg-zinc-100 px-3 py-1.5 rounded-full border border-black/10">
+                             Clean Record
+                           </span>
+                         )}
+                       </td>
+                     </tr>
+                   ))}
+                   {results.length === 0 && (
+                     <tr>
+                       <td colSpan="3" className="text-center py-10 text-zinc-500 font-medium">Waiting for submissions...</td>
+                     </tr>
+                   )}
+                 </tbody>
+               </table>
+             </div>
           </div>
         </div>
       </div>
 
-      {/* AI Evidence Viewer Modal */}
+      {/* AI Evidence Viewer Timeline Modal */}
       {evidenceModal.isOpen && (
-        <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex items-center justify-center p-4 md:p-10">
-          <div className="bg-card border border-border shadow-2xl rounded-2xl w-full max-w-6xl h-full max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 bg-white/95 backdrop-blur-md flex items-center justify-center p-4 md:p-8">
+          <div className="bg-white border border-black/20 shadow-2xl rounded-3xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col animate-in slide-in-from-bottom-8 duration-300">
             
             {/* Header */}
-            <div className="p-6 border-b border-border flex justify-between items-center bg-secondary/30 rounded-t-2xl">
+            <div className="p-8 border-b border-black/10 flex justify-between items-center bg-zinc-50 rounded-t-3xl relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-black"></div>
               <div>
-                <h3 className="font-bold text-2xl flex items-center gap-2"><AlertCircle className="w-6 h-6 text-destructive"/> AI Evidence Log</h3>
-                <p className="text-muted-foreground mt-1">Student: <span className="font-semibold text-foreground">{evidenceModal.studentName}</span></p>
+                <h3 className="font-extrabold text-3xl text-black flex items-center gap-3">
+                  <AlertCircle className="w-8 h-8"/> 
+                  Proctoring Forensics Log
+                </h3>
+                <p className="text-zinc-500 mt-2 font-medium text-lg">Candidate: <span className="font-bold text-black">{evidenceModal.studentName}</span></p>
               </div>
-              <button onClick={() => setEvidenceModal({ isOpen: false, studentName: '', flags: [] })} className="text-muted-foreground hover:text-foreground p-2 rounded-full hover:bg-secondary transition-colors bg-background border border-border shadow-sm">
+              <button onClick={() => setEvidenceModal({ isOpen: false, studentName: '', flags: [] })} className="text-zinc-400 hover:text-black p-3 rounded-full hover:bg-black/5 transition-colors border border-transparent hover:border-black/10">
                 <X className="w-6 h-6" />
               </button>
             </div>
             
-            {/* Body */}
-            <div className="p-6 overflow-y-auto flex-1 bg-secondary/10">
+            {/* Body - Chronological Timeline */}
+            <div className="p-8 overflow-y-auto flex-1 bg-white">
               {evidenceModal.flags.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-muted-foreground">No evidence recorded.</div>
+                <div className="flex items-center justify-center h-full text-zinc-400 font-medium text-lg">No incidents recorded.</div>
               ) : (
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {evidenceModal.flags.map((flag, idx) => (
-                    <div key={idx} className="border border-border rounded-xl overflow-hidden bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col">
-                      <div className="relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden border-b border-border">
-                        {flag.screenshot ? (
-                          <img src={flag.screenshot} alt="Cheating Proof" className="w-full h-full object-cover opacity-90 hover:opacity-100 transition-opacity" />
-                        ) : (
-                          <span className="text-muted-foreground text-sm">No Snapshot Available</span>
-                        )}
-                        <div className="absolute top-3 right-3">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold shadow-sm backdrop-blur-md ${flag.severity === 'HIGH' ? 'bg-destructive/90 text-white' : 'bg-amber-500/90 text-white'}`}>
-                            {flag.severity} RISK
-                          </span>
+                <div className="relative pl-8 md:pl-0">
+                  {/* Vertical line for desktop */}
+                  <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-0.5 bg-black/10 -translate-x-1/2"></div>
+                  {/* Vertical line for mobile */}
+                  <div className="md:hidden absolute left-3 top-0 bottom-0 w-0.5 bg-black/10"></div>
+                  
+                  <div className="space-y-12 relative">
+                    {evidenceModal.flags.map((flag, idx) => {
+                      const isEven = idx % 2 === 0;
+                      return (
+                        <div key={idx} className={`relative flex flex-col md:flex-row items-start md:items-center ${isEven ? 'md:flex-row-reverse' : ''}`}>
+                          
+                          {/* Timeline Node */}
+                          <div className="absolute -left-7 md:left-1/2 md:-translate-x-1/2 top-5 md:top-auto flex items-center justify-center w-6 h-6 rounded-full border-4 border-white bg-black z-10 shadow-sm"></div>
+
+                          {/* Content Card */}
+                          <div className={`w-full md:w-[calc(50%-2rem)] ${isEven ? 'md:pl-8' : 'md:pr-8'}`}>
+                            <div className="bg-white border border-black/10 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group">
+                              <div className="p-5 border-b border-black/5 flex justify-between items-start bg-zinc-50">
+                                <div>
+                                  <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider mb-2 border ${flag.severity === 'HIGH' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-black text-white border-black'}`}>
+                                    {flag.severity} RISK
+                                  </span>
+                                  <h4 className="font-bold text-lg text-black leading-tight">{flag.eventType.replace(/_/g, ' ')}</h4>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-bold text-black">{new Date(flag.timestamp).toLocaleTimeString()}</p>
+                                  <p className="text-xs text-zinc-400 font-medium">{new Date(flag.timestamp).toLocaleDateString()}</p>
+                                </div>
+                              </div>
+                              <div className="p-5">
+                                {flag.screenshot ? (
+                                  <div className="rounded-xl overflow-hidden border border-black/10 bg-black aspect-video relative group cursor-zoom-in">
+                                    <img src={flag.screenshot} alt="Evidence" className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-all group-hover:scale-105" />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
+                                  </div>
+                                ) : (
+                                  <div className="rounded-xl border border-dashed border-black/10 bg-zinc-50 aspect-video flex items-center justify-center text-zinc-400 text-sm font-medium">
+                                    No Visual Snapshot
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="p-5 flex-1 flex flex-col justify-between gap-4">
-                        <div>
-                          <p className="font-bold text-destructive text-lg leading-tight">{flag.eventType.replace(/_/g, ' ')}</p>
-                          <p className="text-sm text-muted-foreground mt-1">Automated AI Detection Flag</p>
-                        </div>
-                        <div className="flex items-center justify-between text-xs font-medium text-muted-foreground pt-4 border-t border-border">
-                          <span>{new Date(flag.timestamp).toLocaleDateString()}</span>
-                          <span>{new Date(flag.timestamp).toLocaleTimeString()}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

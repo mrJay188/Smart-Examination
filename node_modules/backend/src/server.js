@@ -58,6 +58,10 @@ io.on('connection', (socket) => {
     io.to(`user_${data.userId}`).emit('force_terminate', { reason: 'Admin intervention' });
   });
 
+  socket.on('send_warning', (data) => {
+    io.to(`user_${data.userId}`).emit('receive_warning', { message: 'A proctor has flagged your activity. Please focus on your screen.' });
+  });
+
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
   });

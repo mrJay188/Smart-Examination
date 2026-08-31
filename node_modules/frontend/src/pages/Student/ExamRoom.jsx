@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import WebcamMonitor from '../../components/Proctoring/WebcamMonitor';
-import { LogOut, Maximize, WifiOff, CheckCircle, ShieldAlert } from 'lucide-react';
+import { Maximize, WifiOff, CheckCircle, ShieldAlert, ChevronLeft, ChevronRight, AlertTriangle, Send } from 'lucide-react';
 
 const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
@@ -13,12 +13,13 @@ export default function ExamRoom() {
   const [exam, setExam] = useState(null);
   const [answers, setAnswers] = useState({});
   const [timeLeft, setTimeLeft] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   
   // Security States
   const [started, setStarted] = useState(false);
   const [sebError, setSebError] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [adminWarning, setAdminWarning] = useState(null);
   
   // Checklist States
   const [cameraGranted, setCameraGranted] = useState(false);
@@ -36,25 +37,39 @@ export default function ExamRoom() {
     return localStorage.getItem('dev_bypass') === 'true' ? '?dev_bypass=true' : '';
   };
 
-  // Safe Exam Browser Check (Bypassable for devs if needed)
   useEffect(() => {
     // SEB Check temporarily disabled for testing
     setSebError(false);
   }, []);
 
-  // Offline detection
   useEffect(() => {
     const handleOffline = () => setIsOffline(true);
     const handleOnline = () => setIsOffline(false);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('online', handleOnline);
+
+    // Advanced Keyboard Lockdown
+    const handleKeyDown = (e) => {
+      // Block F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U, Ctrl+C, Ctrl+V, Alt+Tab (as much as possible in browser)
+      if (
+        e.key === 'F12' || 
+        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) || 
+        (e.ctrlKey && (e.key === 'U' || e.key === 'c' || e.key === 'v' || e.key === 'x')) ||
+        (e.altKey && e.key === 'Tab')
+      ) {
+        e.preventDefault();
+        alert('Security Alert: This action is prohibited during the exam.');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
-  // Fetch Exam Details
   useEffect(() => {
     const fetchExam = async () => {
       try {
@@ -67,14 +82,19 @@ export default function ExamRoom() {
     fetchExam();
   }, [examId]);
 
-  // Socket setup
   useEffect(() => {
-    socket.emit('join_exam', { examId, userId: 1 }); // Would use actual userId in prod
-    socket.on('force_terminate', (data) => {
+    socket.emit('join_exam', { examId, userId: 1 }); // Hardcoded userId 1 for now (should come from token in real app)
+    socket.on('force_terminate', () => {
       alert('YOUR EXAM HAS BEEN TERMINATED BY AN ADMINISTRATOR.');
-      handleSubmit(true); // Force submit
+      handleSubmit(true); 
     });
-    return () => socket.off('force_terminate');
+    socket.on('receive_warning', (data) => {
+      setAdminWarning(data.message);
+    });
+    return () => {
+      socket.off('force_terminate');
+      socket.off('receive_warning');
+    };
   }, [examId]);
 
   const handleSuspiciousActivity = useCallback(async (eventType, severity, screenshot) => {
@@ -89,7 +109,6 @@ export default function ExamRoom() {
     }
   }, [examId, started]);
 
-  // Anti-Cheating: 3-Strike Tab Detection
   useEffect(() => {
     if (!started) return;
     
@@ -110,7 +129,6 @@ export default function ExamRoom() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [started, handleSuspiciousActivity]);
 
-  // Timer logic
   useEffect(() => {
     if (!started || timeLeft <= 0) return;
     const timer = setInterval(() => {
@@ -124,7 +142,6 @@ export default function ExamRoom() {
       });
     }, 1000);
     
-    // Autosave every 60s
     const autosave = setInterval(() => {
       axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/autosave`, { answers }, getAuthHeaders()).catch(console.error);
     }, 60000);
@@ -135,14 +152,12 @@ export default function ExamRoom() {
     };
   }, [started, timeLeft, examId, answers]);
 
-  // Phase 1: Run Diagnostics
   const runDiagnostics = async () => {
     setChecklistLoading(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       setCameraGranted(true);
       setMicGranted(true);
-      // Stop the stream tracks immediately so the WebcamMonitor can pick them up later without conflict
       stream.getTracks().forEach(track => track.stop());
     } catch (err) {
       alert('You must grant Camera and Microphone permissions to take this exam.');
@@ -150,7 +165,6 @@ export default function ExamRoom() {
     setChecklistLoading(false);
   };
 
-  // Phase 2: Start Exam (Server Synced)
   const handleStartExam = async () => {
     try {
       if (document.documentElement.requestFullscreen) {
@@ -159,7 +173,6 @@ export default function ExamRoom() {
       
       const res = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/start${getBypassQuery()}`, {}, getAuthHeaders());
       
-      // Calculate time left from backend startTime
       const start = new Date(res.data.startTime).getTime();
       const now = Date.now();
       const elapsedSeconds = Math.floor((now - start) / 1000);
@@ -187,8 +200,7 @@ export default function ExamRoom() {
   };
 
   const handleAnswerSelect = (questionId, option) => {
-    const newAnswers = { ...answers, [questionId]: option };
-    setAnswers(newAnswers);
+    setAnswers(prev => ({ ...prev, [questionId]: option }));
   };
 
   const handleSubmit = async (force = false) => {
@@ -196,7 +208,6 @@ export default function ExamRoom() {
       alert('You are offline! Please wait to reconnect before submitting.');
       return;
     }
-
     try {
       await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/exams/${examId}/submit${getBypassQuery()}`, {
         answers,
@@ -221,44 +232,48 @@ export default function ExamRoom() {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  if (!exam) return <div className="flex h-screen items-center justify-center bg-background"><p>Loading Exam...</p></div>;
+  if (!exam) return (
+    <div className="flex h-screen items-center justify-center bg-white">
+      <div className="w-10 h-10 border-4 border-black border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  );
 
   if (sebError) {
     return (
-      <div className="flex h-screen items-center justify-center bg-destructive/10 text-destructive p-4">
-        <div className="max-w-md w-full p-8 rounded-xl border border-destructive/20 bg-card shadow-lg text-center space-y-4">
-          <ShieldAlert className="w-12 h-12 mx-auto text-destructive" />
-          <h2 className="text-2xl font-bold">Access Denied</h2>
-          <p>This exam can only be taken using the <strong>Safe Exam Browser</strong>.</p>
-          <p className="text-xs mt-4 opacity-50">(Dev mode: localStorage.setItem('dev_bypass', 'true'))</p>
+      <div className="flex h-screen items-center justify-center bg-zinc-50 text-black p-4 font-sans">
+        <div className="max-w-md w-full p-8 rounded-2xl border border-black/10 bg-white shadow-xl text-center space-y-4">
+          <ShieldAlert className="w-16 h-16 mx-auto text-black" />
+          <h2 className="text-2xl font-bold text-black">Security Violation</h2>
+          <p className="text-zinc-600">This examination strictly requires the <strong>Safe Exam Browser</strong> to proceed.</p>
         </div>
       </div>
     );
   }
 
-  // Pre-Exam Checklist Screen
   if (!started) {
     const allGreen = cameraGranted && micGranted && !sebError && !isOffline;
     return (
-      <div className="flex h-screen items-center justify-center bg-background text-foreground">
-        <div className="max-w-md w-full p-8 rounded-xl border border-border bg-card shadow-lg space-y-6">
-          <h2 className="text-2xl font-bold text-center">System Diagnostics</h2>
-          <p className="text-sm text-muted-foreground text-center">You must pass all security checks before the exam unlocks.</p>
+      <div className="flex min-h-screen items-center justify-center bg-white text-zinc-900 font-sans p-6 relative">
+        <div className="max-w-lg w-full p-10 rounded-3xl border border-black/10 bg-zinc-50 shadow-xl space-y-8 relative z-10">
+          <div className="text-center space-y-2">
+            <h2 className="text-3xl font-extrabold tracking-tight text-black">Pre-Exam Diagnostics</h2>
+            <p className="text-sm text-zinc-500">Verifying system integrity for <strong className="text-black">{exam.title}</strong></p>
+          </div>
           
           <div className="space-y-4">
-            <div className="flex justify-between items-center p-3 rounded bg-secondary/50">
-              <span>Secure Browser</span>
-              {!sebError ? <CheckCircle className="text-emerald-500 w-5 h-5"/> : <span className="text-destructive">Failed</span>}
+            <div className={`flex justify-between items-center p-4 rounded-xl border ${!sebError ? 'border-black/20 bg-white shadow-sm' : 'border-black/10 bg-black/5'} transition-colors`}>
+              <span className="font-medium text-black">Secure Environment</span>
+              {!sebError ? <CheckCircle className="text-black w-5 h-5"/> : <span className="text-zinc-400 text-sm font-bold tracking-wide">FAILED</span>}
             </div>
-            <div className="flex justify-between items-center p-3 rounded bg-secondary/50">
-              <span>Network Connection</span>
-              {!isOffline ? <CheckCircle className="text-emerald-500 w-5 h-5"/> : <span className="text-destructive">Offline</span>}
+            <div className={`flex justify-between items-center p-4 rounded-xl border ${!isOffline ? 'border-black/20 bg-white shadow-sm' : 'border-black/10 bg-black/5'} transition-colors`}>
+              <span className="font-medium text-black">Network Stability</span>
+              {!isOffline ? <CheckCircle className="text-black w-5 h-5"/> : <span className="text-zinc-400 text-sm font-bold tracking-wide">OFFLINE</span>}
             </div>
-            <div className="flex justify-between items-center p-3 rounded bg-secondary/50">
-              <span>Camera & Microphone</span>
-              {cameraGranted ? <CheckCircle className="text-emerald-500 w-5 h-5"/> : (
-                <button onClick={runDiagnostics} disabled={checklistLoading} className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded">
-                  {checklistLoading ? 'Testing...' : 'Test Now'}
+            <div className={`flex justify-between items-center p-4 rounded-xl border ${cameraGranted ? 'border-black/20 bg-white shadow-sm' : 'border-black/10 bg-black/5'} transition-colors`}>
+              <span className="font-medium text-black">Proctoring Hardware</span>
+              {cameraGranted ? <CheckCircle className="text-black w-5 h-5"/> : (
+                <button onClick={runDiagnostics} disabled={checklistLoading} className="text-xs font-bold uppercase tracking-wider bg-black text-white hover:bg-zinc-800 px-4 py-2 rounded-lg transition-all">
+                  {checklistLoading ? 'Initializing...' : 'Run Test'}
                 </button>
               )}
             </div>
@@ -267,89 +282,206 @@ export default function ExamRoom() {
           <button
             onClick={handleStartExam}
             disabled={!allGreen}
-            className={`w-full flex justify-center items-center gap-2 rounded-md px-4 py-3 font-semibold transition-all ${
-              allGreen ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'bg-secondary text-muted-foreground cursor-not-allowed'
+            className={`w-full flex justify-center items-center gap-3 rounded-xl px-4 py-4 font-bold tracking-wide transition-all duration-300 ${
+              allGreen 
+                ? 'bg-black text-white hover:bg-zinc-800 hover:-translate-y-1 shadow-md' 
+                : 'bg-black/5 text-zinc-400 cursor-not-allowed border border-black/10'
             }`}
           >
-            <Maximize className="w-5 h-5" /> {allGreen ? 'Begin Exam & Enter Fullscreen' : 'Waiting for checks...'}
+            <Maximize className="w-5 h-5" /> {allGreen ? 'ENTER FOCUS MODE' : 'AWAITING CLEARANCE'}
           </button>
         </div>
       </div>
     );
   }
 
+  const currentQuestion = exam.questions[currentQuestionIndex];
+  const isTimeLow = timeLeft < 300; 
+
   return (
     <div 
-      className="min-h-screen bg-background text-foreground flex flex-col select-none relative"
+      className="h-screen w-screen bg-zinc-50 text-zinc-900 flex flex-col font-sans overflow-hidden select-none"
       onCopy={e => e.preventDefault()}
       onPaste={e => e.preventDefault()}
       onContextMenu={e => e.preventDefault()}
     >
       {/* Offline Overlay */}
       {isOffline && (
-        <div className="absolute inset-0 z-[100] bg-background/95 backdrop-blur flex flex-col items-center justify-center p-6 text-center">
-          <WifiOff className="w-16 h-16 text-destructive mb-4 animate-pulse" />
-          <h2 className="text-3xl font-bold mb-2">Connection Lost</h2>
-          <p className="text-lg text-muted-foreground max-w-md">
-            Do not close this window. Your exam timer is still running. The system will automatically resume and submit your answers once you reconnect to the internet.
+        <div className="absolute inset-0 z-[100] bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+          <div className="bg-black/5 p-6 rounded-full mb-6">
+            <WifiOff className="w-20 h-20 text-black animate-pulse" />
+          </div>
+          <h2 className="text-4xl font-extrabold mb-4 text-black">Connection Severed</h2>
+          <p className="text-xl text-zinc-600 max-w-2xl leading-relaxed">
+            Do not close or refresh this window. Your local progress is saved, and the timer is running. The system will automatically resume tracking once a connection is re-established.
           </p>
         </div>
       )}
 
-      <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6 sticky top-0 z-50">
-        <div>
-          <h1 className="text-lg font-bold">{exam.title}</h1>
-          <p className="text-sm text-muted-foreground">Time Remaining: <span className="font-mono text-destructive font-bold">{formatTime(timeLeft)}</span></p>
-        </div>
-        <div className="flex items-center space-x-4">
-          <WebcamMonitor onSuspiciousActivity={handleSuspiciousActivity} />
-          <div className="text-xs font-bold text-destructive px-2 py-1 bg-destructive/10 rounded">
-            Strikes: {strikes.current}/3
+      {/* Admin Warning Overlay */}
+      {adminWarning && (
+        <div className="absolute inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+          <div className="bg-red-500/20 p-6 rounded-full mb-6 border border-red-500/50">
+            <AlertTriangle className="w-20 h-20 text-red-500 animate-pulse" />
           </div>
+          <h2 className="text-4xl font-extrabold mb-4 text-white uppercase tracking-widest text-red-500">Live Warning</h2>
+          <p className="text-2xl text-white max-w-2xl leading-relaxed font-bold mb-10">
+            {adminWarning}
+          </p>
+          <button onClick={() => setAdminWarning(null)} className="px-10 py-4 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xl rounded-2xl transition-all hover:scale-105 shadow-2xl">
+            I Understand & Comply
+          </button>
+        </div>
+      )}
+
+      {/* Sticky Header */}
+      <header className="flex h-20 shrink-0 items-center justify-between border-b border-black/10 bg-white px-8 z-50">
+        <div className="flex flex-col">
+          <h1 className="text-xl font-bold text-black tracking-tight">{exam.title}</h1>
+          <div className="flex items-center gap-3 mt-1">
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-bold border ${isTimeLow ? 'border-black bg-black text-white animate-pulse' : 'border-black/20 bg-black/5 text-black'}`}>
+              <span>⏱</span> {formatTime(timeLeft)}
+            </div>
+            {strikes.current > 0 && (
+              <div className="flex items-center gap-1 text-xs font-bold text-white bg-black px-2 py-1 rounded border border-black">
+                <AlertTriangle className="w-3 h-3" /> {strikes.current}/3 Strikes
+              </div>
+            )}
+          </div>
+        </div>
+        
+        <div className="flex items-center space-x-6">
+          <div className="rounded-xl overflow-hidden border-2 border-black/10 shadow-sm bg-zinc-100">
+            <WebcamMonitor onSuspiciousActivity={handleSuspiciousActivity} />
+          </div>
+          <button
+            onClick={() => {
+              if(window.confirm('Are you certain you want to submit your exam now? This action is irreversible.')) handleSubmit(false);
+            }}
+            className="flex items-center gap-2 rounded-xl bg-black px-6 py-3 font-bold text-white transition-all hover:bg-zinc-800 hover:-translate-y-0.5 shadow-sm"
+          >
+            <Send className="w-4 h-4" /> Finalize
+          </button>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-6 flex justify-center">
-        <div className="w-full max-w-3xl space-y-8">
-          {exam.questions.map((q, idx) => (
-            <div key={q.id} className="rounded-lg border border-border bg-card p-6 shadow-sm">
-              <h3 className="text-lg font-medium mb-4">{idx + 1}. {q.text}</h3>
-              <div className="space-y-3">
-                {(q.options || []).map((opt, i) => (
-                  <label key={i} className={`flex items-center space-x-3 rounded-md border border-input p-3 cursor-pointer transition-colors ${answers[q.id] === opt ? 'bg-primary/10 border-primary' : 'hover:bg-accent'}`}>
-                    <input
-                      type="radio"
-                      name={`q-${q.id}`}
-                      className="sr-only"
-                      onChange={() => handleAnswerSelect(q.id, opt)}
-                      checked={answers[q.id] === opt}
-                    />
-                    <span className="w-5 h-5 rounded-full border border-primary flex items-center justify-center">
-                      {answers[q.id] === opt && <span className="w-3 h-3 rounded-full bg-primary" />}
-                    </span>
-                    <span>{opt}</span>
-                  </label>
-                ))}
+      {/* Main Layout */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Question Area */}
+        <main className="flex-1 flex flex-col items-center p-8 overflow-y-auto relative z-10 bg-zinc-50">
+          {exam.questions.length > 0 ? (
+            <div className="w-full max-w-4xl mt-8">
+              <div className="flex justify-between items-center mb-8">
+                <span className="text-sm font-bold uppercase tracking-widest text-zinc-500">Question {currentQuestionIndex + 1} of {exam.questions.length}</span>
+              </div>
+              
+              <div className="bg-white border border-black/10 rounded-3xl p-10 shadow-sm">
+                <h3 className="text-2xl font-medium leading-relaxed mb-10 text-black">{currentQuestion?.text}</h3>
+                
+                <div className="space-y-4">
+                  {(currentQuestion?.options || []).map((opt, i) => {
+                    const isSelected = answers[currentQuestion.id] === opt;
+                    return (
+                      <label 
+                        key={i} 
+                        className={`group flex items-center space-x-4 rounded-2xl border p-5 cursor-pointer transition-all duration-200 ${
+                          isSelected 
+                            ? 'border-black bg-black/5 shadow-sm' 
+                            : 'border-black/10 bg-white hover:bg-zinc-50 hover:border-black/30'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`q-${currentQuestion.id}`}
+                          className="sr-only"
+                          onChange={() => handleAnswerSelect(currentQuestion.id, opt)}
+                          checked={isSelected}
+                        />
+                        <div className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'border-black bg-black' : 'border-zinc-300 group-hover:border-zinc-500'}`}>
+                          {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
+                        </div>
+                        <span className={`text-lg transition-colors ${isSelected ? 'text-black font-semibold' : 'text-zinc-600 group-hover:text-black'}`}>{opt}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Navigation Buttons */}
+              <div className="flex justify-between items-center mt-12">
+                <button
+                  onClick={() => setCurrentQuestionIndex(prev => Math.max(prev - 1, 0))}
+                  disabled={currentQuestionIndex === 0}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold bg-white border border-black/10 text-black hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+                >
+                  <ChevronLeft className="w-5 h-5" /> Previous
+                </button>
+                <button
+                  onClick={() => setCurrentQuestionIndex(prev => Math.min(prev + 1, exam.questions.length - 1))}
+                  disabled={currentQuestionIndex === exam.questions.length - 1}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold bg-black text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+                >
+                  Next <ChevronRight className="w-5 h-5" />
+                </button>
               </div>
             </div>
-          ))}
-
-          {exam.questions.length === 0 && (
-            <p className="text-center text-muted-foreground py-10">No questions available in this exam.</p>
+          ) : (
+            <div className="mt-20 text-center text-zinc-500">
+              <p>No questions configured for this exam.</p>
+            </div>
           )}
+        </main>
 
-          <div className="flex justify-end pt-4 pb-12">
-            <button
-              onClick={() => {
-                if(window.confirm('Are you sure you want to submit your exam early?')) handleSubmit(false);
-              }}
-              className="rounded-md bg-emerald-600 px-8 py-3 font-semibold text-white shadow-sm hover:bg-emerald-700 transition-all"
-            >
-              Submit Exam
-            </button>
+        {/* Question Palette Sidebar */}
+        <aside className="w-80 shrink-0 border-l border-black/10 bg-white flex flex-col z-20 shadow-sm">
+          <div className="p-6 border-b border-black/10">
+            <h3 className="font-bold text-black mb-1">Question Palette</h3>
+            <p className="text-xs text-zinc-500">Navigate to any question instantly.</p>
           </div>
-        </div>
-      </main>
+          <div className="p-6 overflow-y-auto flex-1">
+            <div className="grid grid-cols-5 gap-3">
+              {exam.questions.map((q, idx) => {
+                const isAnswered = !!answers[q.id];
+                const isCurrent = currentQuestionIndex === idx;
+                
+                let baseStyle = "w-full aspect-square rounded-lg flex items-center justify-center font-bold text-sm transition-all border ";
+                
+                if (isCurrent) {
+                  baseStyle += "bg-black text-white border-black scale-110 shadow-sm";
+                } else if (isAnswered) {
+                  baseStyle += "bg-zinc-200 text-black border-black/20";
+                } else {
+                  baseStyle += "bg-white border-black/10 text-zinc-400 hover:border-black/30 hover:text-black";
+                }
+
+                return (
+                  <button
+                    key={q.id}
+                    onClick={() => setCurrentQuestionIndex(idx)}
+                    className={baseStyle}
+                  >
+                    {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="p-6 border-t border-black/10 bg-zinc-50">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-xs text-zinc-600 font-medium">
+                <div className="w-4 h-4 rounded bg-zinc-200 border border-black/20"></div> Answered
+              </div>
+              <div className="flex items-center gap-3 text-xs text-zinc-600 font-medium">
+                <div className="w-4 h-4 rounded bg-white border border-black/10"></div> Unanswered
+              </div>
+              <div className="flex items-center gap-3 text-xs text-zinc-600 font-medium">
+                <div className="w-4 h-4 rounded bg-black border border-black"></div> Current
+              </div>
+            </div>
+          </div>
+        </aside>
+
+      </div>
     </div>
   );
 }

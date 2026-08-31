@@ -36,7 +36,7 @@ router.get('/', authenticate, async (req, res) => {
 
 // Admin: Create Exam
 router.post('/', authenticate, requireAdmin, async (req, res) => {
-  const { title, description, duration, startTime, endTime, groupId } = req.body;
+  const { title, description, duration, startTime, endTime, groupId, randomizedQuestionCount } = req.body;
   try {
     const newExam = await prisma.exam.create({
       data: { 
@@ -45,7 +45,8 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
         duration: parseInt(duration), 
         startTime: new Date(startTime), 
         endTime: new Date(endTime),
-        groupId: groupId ? parseInt(groupId) : null
+        groupId: groupId ? parseInt(groupId) : null,
+        randomizedQuestionCount: randomizedQuestionCount ? parseInt(randomizedQuestionCount) : null
       }
     });
     res.status(201).json(newExam);
@@ -57,14 +58,15 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
 // Admin: Update Exam
 router.put('/:examId', authenticate, requireAdmin, async (req, res) => {
   const { examId } = req.params;
-  const { title, duration, groupId } = req.body;
+  const { title, duration, groupId, randomizedQuestionCount } = req.body;
   try {
     const updatedExam = await prisma.exam.update({
       where: { id: parseInt(examId) },
       data: { 
         title, 
         duration: parseInt(duration),
-        groupId: groupId ? parseInt(groupId) : null
+        groupId: groupId ? parseInt(groupId) : null,
+        randomizedQuestionCount: randomizedQuestionCount ? parseInt(randomizedQuestionCount) : null
       }
     });
     res.json(updatedExam);
@@ -154,6 +156,18 @@ router.get('/:examId', authenticate, async (req, res) => {
       }
     });
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
+    
+    // If student is assigned specific questions, only return those
+    if (req.user.role === 'STUDENT') {
+      const result = await prisma.result.findUnique({
+        where: { userId_examId: { userId: req.user.userId, examId: parseInt(examId) } }
+      });
+      if (result && result.assignedQuestions) {
+        const assignedIds = result.assignedQuestions;
+        exam.questions = exam.questions.filter(q => assignedIds.includes(q.id));
+      }
+    }
+    
     res.json(exam);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching exam' });
@@ -175,11 +189,25 @@ router.post('/:examId/start', authenticate, requireSEB, async (req, res) => {
       return res.json({ startTime: existing.startTime, answers: existing.answers || {} });
     }
 
+    // Determine assigned questions based on randomizedQuestionCount
+    const exam = await prisma.exam.findUnique({
+      where: { id: parseInt(examId) },
+      include: { questions: { select: { id: true } } }
+    });
+    
+    let assignedQuestions = null;
+    if (exam && exam.randomizedQuestionCount && exam.questions.length > 0) {
+      const shuffled = exam.questions.sort(() => 0.5 - Math.random());
+      const selected = shuffled.slice(0, exam.randomizedQuestionCount);
+      assignedQuestions = selected.map(q => q.id);
+    }
+
     const result = await prisma.result.create({
       data: {
         examId: parseInt(examId),
         userId: req.user.userId,
-        status: 'IN_PROGRESS'
+        status: 'IN_PROGRESS',
+        assignedQuestions: assignedQuestions
       }
     });
     res.status(201).json({ startTime: result.startTime, answers: {} });
@@ -227,10 +255,16 @@ router.post('/:examId/submit', authenticate, requireSEB, async (req, res) => {
     if (!exam) return res.status(404).json({ message: 'Exam not found' });
 
     let correctCount = 0;
-    const totalQuestions = exam.questions.length;
+    
+    // Filter to only assigned questions if applicable
+    let questionsToGrade = exam.questions;
+    if (existing.assignedQuestions && existing.assignedQuestions.length > 0) {
+      questionsToGrade = questionsToGrade.filter(q => existing.assignedQuestions.includes(q.id));
+    }
+    const totalQuestions = questionsToGrade.length;
 
     if (totalQuestions > 0) {
-      exam.questions.forEach(q => {
+      questionsToGrade.forEach(q => {
         // answers object is { [questionId]: "Selected Option" }
         if (answers && answers[q.id] === q.correctAnswer) {
           correctCount++;

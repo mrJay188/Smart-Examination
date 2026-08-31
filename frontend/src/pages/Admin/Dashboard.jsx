@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { LogOut, Plus, Users, BookOpen, Trash2, Edit, UploadCloud, Link as LinkIcon, AlertTriangle, Search, Key, Filter } from "lucide-react";
+import { LogOut, Plus, Users, BookOpen, Trash2, Edit, UploadCloud, Link as LinkIcon, AlertTriangle, Search, Key, Filter, CheckCircle } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 
 export default function Dashboard() {
@@ -17,7 +17,7 @@ export default function Dashboard() {
   // Forms
   const [isCreatingExam, setIsCreatingExam] = useState(false);
   const [editingExamId, setEditingExamId] = useState(null);
-  const [examForm, setExamForm] = useState({ title: "", description: "", duration: 60, startTime: "", endTime: "", groupId: "" });
+  const [examForm, setExamForm] = useState({ title: "", description: "", duration: 60, startTime: "", endTime: "", groupId: "", randomizedQuestionCount: "" });
   
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [groupForm, setGroupForm] = useState({ name: "", description: "" });
@@ -50,7 +50,6 @@ export default function Dashboard() {
       setUsers(res.data.users);
       setPagination(res.data.pagination);
     } else {
-      // Fallback in case old endpoint is hit during transition
       setUsers(res.data);
     }
   };
@@ -59,12 +58,10 @@ export default function Dashboard() {
     setGroups(res.data);
   };
 
-  // Re-fetch when filters change
   useEffect(() => {
     fetchUsers(1);
   }, [searchQuery, filterGroupId]);
 
-  // --- Exam Methods ---
   const handleSaveExam = async (e) => {
     e.preventDefault();
     const payload = { ...examForm, groupId: examForm.groupId || null };
@@ -75,7 +72,7 @@ export default function Dashboard() {
     }
     setIsCreatingExam(false);
     setEditingExamId(null);
-    setExamForm({ title: "", description: "", duration: 60, startTime: "", endTime: "", groupId: "" });
+    setExamForm({ title: "", description: "", duration: 60, startTime: "", endTime: "", groupId: "", randomizedQuestionCount: "" });
     fetchExams();
   };
   const startEditExam = (exam) => {
@@ -84,7 +81,8 @@ export default function Dashboard() {
       title: exam.title, description: exam.description || "", duration: exam.duration,
       startTime: exam.startTime ? new Date(exam.startTime).toISOString().slice(0,16) : "",
       endTime: exam.endTime ? new Date(exam.endTime).toISOString().slice(0,16) : "",
-      groupId: exam.groupId || ""
+      groupId: exam.groupId || "",
+      randomizedQuestionCount: exam.randomizedQuestionCount || ""
     });
     setIsCreatingExam(true);
   };
@@ -95,7 +93,6 @@ export default function Dashboard() {
     }
   };
 
-  // --- Group Methods ---
   const handleSaveGroup = async (e) => {
     e.preventDefault();
     await axios.post((import.meta.env.VITE_API_URL || 'http://localhost:5000') + "/api/groups", groupForm, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
@@ -107,7 +104,7 @@ export default function Dashboard() {
     if (window.confirm("Delete this group? Users and Exams won't be deleted, just unlinked.")) {
       await axios.delete(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/groups/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
       fetchGroups();
-      fetchUsers(); // Refresh users in case they were in this group
+      fetchUsers(); 
     }
   };
   const handleViewGroupMembers = (groupId) => {
@@ -115,7 +112,6 @@ export default function Dashboard() {
     setActiveTab("students");
   };
 
-  // --- Student Methods ---
   const handleToggleStatus = async (user) => {
     const newStatus = user.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
     if (window.confirm(`Are you sure you want to change status to ${newStatus}?`)) {
@@ -127,7 +123,7 @@ export default function Dashboard() {
     try {
       await axios.put(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_API_URL || 'http://localhost:5000') + ''}/api/users/${userId}/group`, { groupId: newGroupId }, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
       fetchUsers();
-      fetchGroups(); // Update counts
+      fetchGroups(); 
     } catch (error) {
       alert("Error updating student's group.");
     }
@@ -175,277 +171,365 @@ export default function Dashboard() {
     }
   };
 
-  // Filter logic for students is now handled server-side, 
-  // we just use the raw 'users' array from state.
   const filteredUsers = users;
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background">
-      <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6">
-        <div className="flex items-center gap-2 text-primary">
+    <div className="flex min-h-screen w-full flex-col bg-zinc-50 text-zinc-900 font-sans">
+      
+      {/* Header */}
+      <header className="flex h-16 items-center justify-between border-b border-black/10 bg-white px-8 shadow-sm">
+        <div className="flex items-center gap-3 text-black">
           <BookOpen className="h-6 w-6" />
-          <span className="text-lg font-bold">Admin Portal</span>
+          <span className="text-xl font-bold tracking-tight">Admin Portal</span>
         </div>
-        <button onClick={() => { localStorage.removeItem("token"); navigate("/login"); }} className="flex items-center space-x-2 rounded-md bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80">
+        <button 
+          onClick={() => { localStorage.removeItem("token"); navigate("/login"); }} 
+          className="flex items-center space-x-2 rounded-lg bg-black/5 px-4 py-2 text-sm font-medium hover:bg-black/10 transition-colors border border-black/10 text-zinc-700 hover:text-black"
+        >
           <LogOut className="h-4 w-4" /> <span>Logout</span>
         </button>
       </header>
 
       <main className="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full">
-        {/* Tabs */}
-        <div className="flex space-x-4 mb-8 border-b border-border pb-4">
-          <button onClick={() => setActiveTab("exams")} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab === "exams" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}>Manage Exams</button>
-          <button onClick={() => setActiveTab("groups")} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab === "groups" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}>Manage Batches (Groups)</button>
-          <button onClick={() => setActiveTab("students")} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab === "students" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}>Student Directory</button>
+        
+        {/* Navigation Tabs */}
+        <div className="flex space-x-2 mb-10 pb-4 border-b border-black/10">
+          <button 
+            onClick={() => setActiveTab("exams")} 
+            className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${activeTab === "exams" ? "bg-black text-white shadow-md" : "bg-white text-zinc-600 hover:bg-zinc-100 border border-black/5"}`}
+          >
+            Examinations
+          </button>
+          <button 
+            onClick={() => setActiveTab("groups")} 
+            className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${activeTab === "groups" ? "bg-black text-white shadow-md" : "bg-white text-zinc-600 hover:bg-zinc-100 border border-black/5"}`}
+          >
+            Cohorts & Batches
+          </button>
+          <button 
+            onClick={() => setActiveTab("students")} 
+            className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${activeTab === "students" ? "bg-black text-white shadow-md" : "bg-white text-zinc-600 hover:bg-zinc-100 border border-black/5"}`}
+          >
+            Student Directory
+          </button>
         </div>
 
         {/* EXAMS TAB */}
         {activeTab === "exams" && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h1 className="text-3xl font-bold">Examinations</h1>
-              <button onClick={() => setIsCreatingExam(!isCreatingExam)} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md font-semibold"><Plus className="w-4 h-4"/> New Exam</button>
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-black/5">
+              <div>
+                <h1 className="text-2xl font-bold text-black">Active Examinations</h1>
+                <p className="text-sm text-zinc-500 mt-1">Manage and monitor all ongoing and upcoming exams.</p>
+              </div>
+              <button 
+                onClick={() => setIsCreatingExam(!isCreatingExam)} 
+                className="flex items-center gap-2 bg-black text-white px-5 py-2.5 rounded-xl font-bold hover:bg-zinc-800 transition-all hover:shadow-lg hover:-translate-y-0.5"
+              >
+                <Plus className="w-5 h-5"/> New Exam
+              </button>
             </div>
+
             {isCreatingExam && (
-              <form onSubmit={handleSaveExam} className="bg-card p-6 rounded-xl border border-border shadow-sm grid gap-4 md:grid-cols-2">
+              <form onSubmit={handleSaveExam} className="bg-white p-8 rounded-3xl border border-black/10 shadow-lg grid gap-6 md:grid-cols-2 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-black"></div>
+                <div className="col-span-2 mb-2">
+                  <h3 className="text-xl font-bold text-black">{editingExamId ? 'Edit Examination' : 'Create New Examination'}</h3>
+                </div>
+                
                 <div className="col-span-2 md:col-span-1">
-                  <label className="block text-sm font-medium mb-1">Exam Title</label>
-                  <input required type="text" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" value={examForm.title} onChange={e => setExamForm({ ...examForm, title: e.target.value })} />
+                  <label className="block text-sm font-bold text-black mb-2">Exam Title</label>
+                  <input required type="text" className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all" value={examForm.title} onChange={e => setExamForm({ ...examForm, title: e.target.value })} />
                 </div>
                 <div className="col-span-2 md:col-span-1">
-                  <label className="block text-sm font-medium mb-1">Duration (min)</label>
-                  <input required type="number" min="1" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" value={examForm.duration} onChange={e => setExamForm({ ...examForm, duration: e.target.value })} />
+                  <label className="block text-sm font-bold text-black mb-2">Duration (min)</label>
+                  <input required type="number" min="1" className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all" value={examForm.duration} onChange={e => setExamForm({ ...examForm, duration: e.target.value })} />
                 </div>
                 <div className="col-span-2 md:col-span-1">
-                  <label className="block text-sm font-medium mb-1">Start Time</label>
-                  <input required type="datetime-local" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" value={examForm.startTime} onChange={e => setExamForm({ ...examForm, startTime: e.target.value })} />
+                  <label className="block text-sm font-bold text-black mb-2">Start Time</label>
+                  <input required type="datetime-local" className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all" value={examForm.startTime} onChange={e => setExamForm({ ...examForm, startTime: e.target.value })} />
                 </div>
                 <div className="col-span-2 md:col-span-1">
-                  <label className="block text-sm font-medium mb-1">End Time</label>
-                  <input required type="datetime-local" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" value={examForm.endTime} onChange={e => setExamForm({ ...examForm, endTime: e.target.value })} />
+                  <label className="block text-sm font-bold text-black mb-2">End Time</label>
+                  <input required type="datetime-local" className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all" value={examForm.endTime} onChange={e => setExamForm({ ...examForm, endTime: e.target.value })} />
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium mb-1">Restrict to Group (Optional)</label>
-                  <select className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" value={examForm.groupId} onChange={e => setExamForm({ ...examForm, groupId: e.target.value })}>
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-sm font-bold text-black mb-2">Restrict to Cohort</label>
+                  <select className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all" value={examForm.groupId} onChange={e => setExamForm({ ...examForm, groupId: e.target.value })}>
                     <option value="">-- Open to all students --</option>
                     {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
                 </div>
-                <div className="col-span-2 flex justify-end gap-2 mt-2">
-                  <button type="button" onClick={() => setIsCreatingExam(false)} className="rounded-md px-4 py-2 text-sm font-medium hover:bg-secondary">Cancel</button>
-                  <button type="submit" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">Save Exam</button>
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-sm font-bold text-black mb-2">Questions to Serve (Optional)</label>
+                  <input type="number" min="1" placeholder="Leave blank to serve all" className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all" value={examForm.randomizedQuestionCount} onChange={e => setExamForm({ ...examForm, randomizedQuestionCount: e.target.value })} />
+                </div>
+                <div className="col-span-2 flex justify-end gap-3 mt-4 border-t border-black/5 pt-6">
+                  <button type="button" onClick={() => setIsCreatingExam(false)} className="rounded-xl px-6 py-2.5 text-sm font-bold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-colors">Cancel</button>
+                  <button type="submit" className="rounded-xl bg-black px-6 py-2.5 text-sm font-bold text-white hover:bg-zinc-800 shadow-md transition-all">Save Configuration</button>
                 </div>
               </form>
             )}
+            
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {exams.map(exam => (
-                <div key={exam.id} className="rounded-xl border border-border bg-card p-6 shadow-sm flex flex-col justify-between relative group">
-                  <div className="absolute top-4 right-4 flex gap-2">
-                    <button onClick={() => startEditExam(exam)} className="text-muted-foreground hover:text-primary"><Edit className="w-4 h-4" /></button>
-                    <button onClick={() => handleDeleteExam(exam.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
+                <div key={exam.id} className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm flex flex-col justify-between relative group hover:shadow-lg hover:border-black/20 transition-all duration-300">
+                  <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => startEditExam(exam)} className="p-2 bg-zinc-100 hover:bg-black hover:text-white rounded-lg text-zinc-600 transition-colors"><Edit className="w-4 h-4" /></button>
+                    <button onClick={() => handleDeleteExam(exam.id)} className="p-2 bg-red-50 hover:bg-red-500 hover:text-white rounded-lg text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg pr-12">{exam.title}</h3>
-                    {exam.group && <span className="inline-block mt-2 px-2 py-1 bg-secondary text-xs font-semibold rounded-md text-secondary-foreground">🔒 {exam.group.name}</span>}
-                    <div className="mt-4 flex flex-col space-y-1 text-sm text-muted-foreground">
-                      <div className="flex items-center"><BookOpen className="mr-2 h-4 w-4" /> <span>Duration: {exam.duration}m</span></div>
+                    <h3 className="font-bold text-xl text-black pr-16 mb-3">{exam.title}</h3>
+                    {exam.group ? (
+                      <span className="inline-flex items-center gap-1 mt-1 px-3 py-1 bg-black text-xs font-bold rounded-full text-white">🔒 {exam.group.name}</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 mt-1 px-3 py-1 bg-zinc-100 text-xs font-bold rounded-full text-zinc-600">🌐 Public (All Students)</span>
+                    )}
+                    <div className="mt-6 flex flex-col space-y-2 text-sm text-zinc-500 font-medium">
+                      <div className="flex items-center gap-3"><BookOpen className="h-4 w-4 text-black" /> <span>{exam.duration} Minutes</span></div>
+                      <div className="flex items-center gap-3"><Users className="h-4 w-4 text-black" /> <span>{exam._count?.questions || 0} Questions</span></div>
                     </div>
                   </div>
-                  <button onClick={() => navigate(`/admin/exam/${exam.id}`)} className="mt-6 w-full rounded-md border border-primary text-primary py-2 text-sm font-semibold hover:bg-primary/10 transition-colors">
-                    Manage Questions
+                  <button onClick={() => navigate(`/admin/exam/${exam.id}`)} className="mt-8 w-full rounded-xl border-2 border-black text-black py-3 text-sm font-bold hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2">
+                    Manage Assessment <LinkIcon className="w-4 h-4" />
                   </button>
                 </div>
               ))}
+              {exams.length === 0 && !isCreatingExam && (
+                <div className="col-span-full py-20 text-center border-2 border-dashed border-black/10 rounded-3xl bg-zinc-50">
+                  <BookOpen className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
+                  <p className="text-zinc-500 font-medium text-lg">No examinations found.</p>
+                  <p className="text-zinc-400 text-sm">Create your first exam to get started.</p>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* GROUPS TAB */}
         {activeTab === "groups" && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h1 className="text-3xl font-bold">Cohorts & Batches</h1>
-              <button onClick={() => setIsCreatingGroup(!isCreatingGroup)} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md font-semibold"><Plus className="w-4 h-4"/> Create Group</button>
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-black/5">
+              <div>
+                <h1 className="text-2xl font-bold text-black">Cohorts & Batches</h1>
+                <p className="text-sm text-zinc-500 mt-1">Organize students into groups for targeted exam assignments.</p>
+              </div>
+              <button onClick={() => setIsCreatingGroup(!isCreatingGroup)} className="flex items-center gap-2 bg-black text-white px-5 py-2.5 rounded-xl font-bold hover:bg-zinc-800 transition-all hover:shadow-lg hover:-translate-y-0.5"><Plus className="w-5 h-5"/> Create Group</button>
             </div>
+            
             {isCreatingGroup && (
-              <form onSubmit={handleSaveGroup} className="bg-card p-6 rounded-xl border border-border shadow-sm grid gap-4 max-w-md">
+              <form onSubmit={handleSaveGroup} className="bg-white p-8 rounded-3xl border border-black/10 shadow-lg max-w-md relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-black"></div>
+                <h3 className="text-xl font-bold text-black mb-6">New Cohort</h3>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Group Name</label>
-                  <input required type="text" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="e.g. CS-101 Fall 2026" value={groupForm.name} onChange={e => setGroupForm({ ...groupForm, name: e.target.value })} />
+                  <label className="block text-sm font-bold text-black mb-2">Group Name</label>
+                  <input required type="text" className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all" placeholder="e.g. Computer Science Fall 2026" value={groupForm.name} onChange={e => setGroupForm({ ...groupForm, name: e.target.value })} />
                 </div>
-                <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setIsCreatingGroup(false)} className="rounded-md px-4 py-2 text-sm font-medium hover:bg-secondary">Cancel</button>
-                  <button type="submit" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">Save Group</button>
+                <div className="flex justify-end gap-3 mt-8">
+                  <button type="button" onClick={() => setIsCreatingGroup(false)} className="rounded-xl px-6 py-2.5 text-sm font-bold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-colors">Cancel</button>
+                  <button type="submit" className="rounded-xl bg-black px-6 py-2.5 text-sm font-bold text-white hover:bg-zinc-800 shadow-md transition-all">Save Group</button>
                 </div>
               </form>
             )}
-            <div className="grid gap-6 sm:grid-cols-3">
+            
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {groups.map(group => (
-                <div key={group.id} className="rounded-xl border border-border bg-card p-6 flex flex-col justify-between shadow-sm relative">
-                  <button onClick={() => handleDeleteGroup(group.id)} className="absolute top-4 right-4 text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
+                <div key={group.id} className="rounded-2xl border border-black/10 bg-white p-6 flex flex-col justify-between shadow-sm relative group hover:border-black/30 hover:shadow-md transition-all">
+                  <button onClick={() => handleDeleteGroup(group.id)} className="absolute top-4 right-4 p-2 bg-zinc-50 hover:bg-red-500 hover:text-white rounded-lg text-zinc-400 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4" /></button>
                   <div>
-                    <h3 className="font-semibold text-lg">{group.name}</h3>
-                    <p className="text-sm text-muted-foreground mt-2">{group._count.users} Students</p>
-                    <p className="text-sm text-muted-foreground">{group._count.exams} Assigned Exams</p>
+                    <h3 className="font-bold text-xl text-black">{group.name}</h3>
+                    <div className="mt-6 flex flex-col gap-3">
+                      <div className="flex items-center gap-3 bg-zinc-50 p-3 rounded-xl border border-black/5">
+                        <Users className="w-5 h-5 text-zinc-400" /> 
+                        <span className="font-bold text-black">{group._count.users} <span className="font-normal text-zinc-500">Students</span></span>
+                      </div>
+                      <div className="flex items-center gap-3 bg-zinc-50 p-3 rounded-xl border border-black/5">
+                        <BookOpen className="w-5 h-5 text-zinc-400" /> 
+                        <span className="font-bold text-black">{group._count.exams} <span className="font-normal text-zinc-500">Exams</span></span>
+                      </div>
+                    </div>
                   </div>
-                  <button onClick={() => handleViewGroupMembers(group.id)} className="mt-4 w-full rounded-md border border-primary text-primary py-2 text-sm font-semibold hover:bg-primary/10 transition-colors flex items-center justify-center gap-2">
-                    <Users className="w-4 h-4" /> View Students
+                  <button onClick={() => handleViewGroupMembers(group.id)} className="mt-6 w-full rounded-xl bg-black text-white py-3 text-sm font-bold hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 shadow-sm">
+                     View Roster
                   </button>
                 </div>
               ))}
+              {groups.length === 0 && !isCreatingGroup && (
+                <div className="col-span-full py-20 text-center border-2 border-dashed border-black/10 rounded-3xl bg-zinc-50">
+                  <Users className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
+                  <p className="text-zinc-500 font-medium text-lg">No cohorts configured.</p>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* STUDENTS TAB */}
         {activeTab === "students" && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-              <h1 className="text-3xl font-bold">Student Directory</h1>
-              <div className="flex gap-2">
-                <button onClick={() => { setIsAddingStudent(!isAddingStudent); setIsBulkImport(false); }} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md font-semibold hover:bg-primary/90 transition-colors"><Plus className="w-4 h-4"/> New Student</button>
-                <button onClick={() => { setIsBulkImport(!isBulkImport); setIsAddingStudent(false); }} className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 rounded-md font-semibold hover:bg-secondary/80 transition-colors"><UploadCloud className="w-4 h-4"/> Import CSV</button>
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-6 bg-white p-6 rounded-2xl shadow-sm border border-black/5">
+              <div>
+                <h1 className="text-2xl font-bold text-black">Student Directory</h1>
+                <p className="text-sm text-zinc-500 mt-1">Manage accounts, assign batches, and resolve access issues.</p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button onClick={() => { setIsAddingStudent(!isAddingStudent); setIsBulkImport(false); }} className="flex items-center gap-2 bg-black text-white px-5 py-2.5 rounded-xl font-bold hover:bg-zinc-800 transition-all hover:shadow-md"><Plus className="w-5 h-5"/> Single Entry</button>
+                <button onClick={() => { setIsBulkImport(!isBulkImport); setIsAddingStudent(false); }} className="flex items-center gap-2 bg-white border border-black text-black px-5 py-2.5 rounded-xl font-bold hover:bg-zinc-100 transition-all"><UploadCloud className="w-5 h-5"/> Bulk Import CSV</button>
               </div>
             </div>
 
             {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+            <div className="flex flex-col sm:flex-row gap-4 bg-zinc-50 p-4 rounded-2xl border border-black/5">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
                 <input 
                   type="text" 
-                  placeholder="Search by name or email..." 
-                  className="w-full pl-9 pr-4 py-2 rounded-md border border-input bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="Search by student name or email..." 
+                  className="w-full pl-11 pr-4 py-3 rounded-xl border border-black/10 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-black shadow-sm"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                 />
               </div>
-              <div className="relative w-full sm:w-64">
-                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <div className="relative w-full sm:w-72">
+                <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
                 <select 
-                  className="w-full pl-9 pr-4 py-2 rounded-md border border-input bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary appearance-none"
+                  className="w-full pl-11 pr-4 py-3 rounded-xl border border-black/10 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-black shadow-sm appearance-none cursor-pointer"
                   value={filterGroupId}
                   onChange={e => setFilterGroupId(e.target.value)}
                 >
-                  <option value="">All Groups</option>
-                  <option value="null">Unassigned</option>
+                  <option value="">All Cohorts (View All)</option>
+                  <option value="null">Unassigned Students</option>
                   {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               </div>
             </div>
 
             {isBulkImport && (
-              <form onSubmit={handleBulkImport} className="bg-card p-6 rounded-xl border border-border shadow-sm max-w-2xl mb-6">
-                <h3 className="font-semibold mb-2">Paste CSV Data</h3>
-                <p className="text-xs text-muted-foreground mb-4">Format: name,email,password</p>
-                <textarea rows="6" className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs focus:ring-1 focus:ring-primary focus:outline-none mb-4" value={csvText} onChange={e => setCsvText(e.target.value)} />
-                <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setIsBulkImport(false)} className="rounded-md px-4 py-2 text-sm hover:bg-secondary transition-colors">Cancel</button>
-                  <button type="submit" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">Import Students</button>
+              <form onSubmit={handleBulkImport} className="bg-white p-8 rounded-3xl border border-black/10 shadow-lg max-w-3xl relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-black"></div>
+                <h3 className="font-bold text-xl text-black mb-2">Import from CSV</h3>
+                <p className="text-sm text-zinc-500 mb-6 bg-zinc-50 p-3 rounded-lg border border-black/5">Format required: <code>name,email,password</code> (First row is ignored as headers)</p>
+                <textarea rows="6" className="w-full rounded-xl border border-black/10 bg-zinc-50 p-4 font-mono text-sm focus:ring-2 focus:ring-black focus:outline-none mb-6" value={csvText} onChange={e => setCsvText(e.target.value)} />
+                <div className="flex justify-end gap-3">
+                  <button type="button" onClick={() => setIsBulkImport(false)} className="rounded-xl px-6 py-2.5 text-sm font-bold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-colors">Cancel</button>
+                  <button type="submit" className="rounded-xl bg-black px-6 py-2.5 text-sm font-bold text-white hover:bg-zinc-800 shadow-md transition-all">Process Import</button>
                 </div>
               </form>
             )}
 
             {isAddingStudent && (
-              <form onSubmit={handleAddSingleStudent} className="bg-card p-6 rounded-xl border border-border shadow-sm max-w-2xl mb-6 grid gap-4 md:grid-cols-2">
-                <div className="col-span-2"><h3 className="font-semibold text-lg">Add New Student</h3></div>
+              <form onSubmit={handleAddSingleStudent} className="bg-white p-8 rounded-3xl border border-black/10 shadow-lg relative overflow-hidden grid gap-6 md:grid-cols-2">
+                <div className="absolute top-0 left-0 w-1 h-full bg-black"></div>
+                <div className="col-span-2 mb-2"><h3 className="font-bold text-xl text-black">Manual Entry</h3></div>
+                
                 <div className="col-span-2 md:col-span-1">
-                  <label className="block text-sm font-medium mb-1">Full Name</label>
-                  <input required type="text" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" value={studentForm.name} onChange={e => setStudentForm({ ...studentForm, name: e.target.value })} />
+                  <label className="block text-sm font-bold text-black mb-2">Full Name</label>
+                  <input required type="text" className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black" value={studentForm.name} onChange={e => setStudentForm({ ...studentForm, name: e.target.value })} />
                 </div>
                 <div className="col-span-2 md:col-span-1">
-                  <label className="block text-sm font-medium mb-1">Email Address</label>
-                  <input required type="email" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" value={studentForm.email} onChange={e => setStudentForm({ ...studentForm, email: e.target.value })} />
+                  <label className="block text-sm font-bold text-black mb-2">Email Address</label>
+                  <input required type="email" className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black" value={studentForm.email} onChange={e => setStudentForm({ ...studentForm, email: e.target.value })} />
                 </div>
                 <div className="col-span-2 md:col-span-1">
-                  <label className="block text-sm font-medium mb-1">Password</label>
-                  <input required type="password" minLength="6" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" value={studentForm.password} onChange={e => setStudentForm({ ...studentForm, password: e.target.value })} />
+                  <label className="block text-sm font-bold text-black mb-2">Initial Password</label>
+                  <input required type="password" minLength="6" className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black" value={studentForm.password} onChange={e => setStudentForm({ ...studentForm, password: e.target.value })} />
                 </div>
                 <div className="col-span-2 md:col-span-1">
-                  <label className="block text-sm font-medium mb-1">Assign to Group (Optional)</label>
-                  <select className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" value={studentForm.groupId} onChange={e => setStudentForm({ ...studentForm, groupId: e.target.value })}>
+                  <label className="block text-sm font-bold text-black mb-2">Assign to Cohort</label>
+                  <select className="w-full rounded-xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black" value={studentForm.groupId} onChange={e => setStudentForm({ ...studentForm, groupId: e.target.value })}>
                     <option value="">-- Unassigned --</option>
                     {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
                 </div>
-                <div className="col-span-2 flex justify-end gap-2 mt-2">
-                  <button type="button" onClick={() => setIsAddingStudent(false)} className="rounded-md px-4 py-2 text-sm hover:bg-secondary transition-colors">Cancel</button>
-                  <button type="submit" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">Create Student</button>
+                <div className="col-span-2 flex justify-end gap-3 mt-4 border-t border-black/5 pt-6">
+                  <button type="button" onClick={() => setIsAddingStudent(false)} className="rounded-xl px-6 py-2.5 text-sm font-bold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-colors">Cancel</button>
+                  <button type="submit" className="rounded-xl bg-black px-6 py-2.5 text-sm font-bold text-white hover:bg-zinc-800 shadow-md transition-all">Create Account</button>
                 </div>
               </form>
             )}
 
-            <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
-              <table className="w-full text-sm text-left">
-               <thead className="text-xs uppercase bg-secondary text-secondary-foreground">
-                 <tr>
-                   <th className="px-6 py-4">Name</th>
-                   <th className="px-6 py-4">Group / Batch</th>
-                   <th className="px-6 py-4">Status</th>
-                   <th className="px-6 py-4 text-right">Actions</th>
-                 </tr>
-               </thead>
-               <tbody className="divide-y divide-border">
-                 {filteredUsers.map(user => (
-                  <tr key={user.id} className="hover:bg-accent/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <Link to={`/admin/student/${user.id}`} className="font-medium text-primary hover:underline">{user.name}</Link>
-                      <p className="text-xs text-muted-foreground">{user.email}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <select 
-                        className="text-sm bg-transparent border-b border-transparent hover:border-input focus:border-primary focus:outline-none px-1 py-1"
-                        value={user.group?.id || ""}
-                        onChange={(e) => handleChangeGroup(user.id, e.target.value)}
-                      >
-                        <option value="">Unassigned</option>
-                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 text-xs font-bold rounded-full ${user.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button onClick={() => handleResetPassword(user.id)} className="text-muted-foreground hover:text-primary p-1.5 rounded-md hover:bg-primary/10 transition-colors" title="Reset Password">
-                          <Key className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleToggleStatus(user)} className="text-xs font-medium px-3 py-1.5 border rounded-md hover:bg-secondary transition-colors w-24">
-                          {user.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                 ))}
-                 {filteredUsers.length === 0 && (
-                   <tr><td colSpan="4" className="text-center py-8 text-muted-foreground border-dashed border-t">No students match the current filters.</td></tr>
-                 )}
-               </tbody>
-             </table>
-             {/* Pagination Controls */}
-             {pagination.totalPages > 1 && (
-               <div className="flex items-center justify-between px-6 py-3 border-t border-border bg-secondary/30">
-                 <p className="text-xs text-muted-foreground">Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}</p>
-                 <div className="flex gap-2">
-                   <button 
-                     disabled={pagination.page <= 1} 
-                     onClick={() => fetchUsers(pagination.page - 1)}
-                     className="px-3 py-1 border border-border rounded-md text-xs font-medium bg-card hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-                   >
-                     Previous
-                   </button>
-                   <button 
-                     disabled={pagination.page >= pagination.totalPages} 
-                     onClick={() => fetchUsers(pagination.page + 1)}
-                     className="px-3 py-1 border border-border rounded-md text-xs font-medium bg-card hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-                   >
-                     Next
-                   </button>
-                 </div>
-               </div>
-             )}
+            <div className="bg-white rounded-3xl border border-black/10 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                 <thead>
+                   <tr className="bg-zinc-50 border-b border-black/10">
+                     <th className="px-6 py-5 text-xs font-extrabold text-zinc-500 uppercase tracking-wider">Candidate Profile</th>
+                     <th className="px-6 py-5 text-xs font-extrabold text-zinc-500 uppercase tracking-wider">Cohort / Batch</th>
+                     <th className="px-6 py-5 text-xs font-extrabold text-zinc-500 uppercase tracking-wider">Account Status</th>
+                     <th className="px-6 py-5 text-xs font-extrabold text-zinc-500 uppercase tracking-wider text-right">Actions</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-black/5">
+                   {filteredUsers.map(user => (
+                    <tr key={user.id} className="hover:bg-zinc-50/80 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center font-bold text-lg">
+                            {user.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <Link to={`/admin/student/${user.id}`} className="font-bold text-black hover:underline text-base">{user.name}</Link>
+                            <p className="text-xs text-zinc-500 mt-0.5">{user.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <select 
+                          className="text-sm font-semibold bg-zinc-100 border border-transparent rounded-lg hover:border-black/20 focus:border-black focus:outline-none px-3 py-2 cursor-pointer transition-all w-48"
+                          value={user.group?.id || ""}
+                          onChange={(e) => handleChangeGroup(user.id, e.target.value)}
+                        >
+                          <option value="">None (Unassigned)</option>
+                          {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full border ${user.status === 'ACTIVE' ? 'bg-black text-white border-black' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                          {user.status === 'ACTIVE' && <CheckCircle className="w-3 h-3" />}
+                          {user.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => handleResetPassword(user.id)} className="text-zinc-400 hover:text-black p-2 rounded-lg hover:bg-zinc-100 border border-transparent hover:border-black/10 transition-all" title="Reset Password">
+                            <Key className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleToggleStatus(user)} className={`text-xs font-bold px-4 py-2 border rounded-lg transition-all w-28 ${user.status === 'ACTIVE' ? 'bg-white border-black/20 text-black hover:bg-zinc-100' : 'bg-black text-white hover:bg-zinc-800'}`}>
+                            {user.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                   ))}
+                   {filteredUsers.length === 0 && (
+                     <tr><td colSpan="4" className="text-center py-16 text-zinc-500 font-medium">No candidates found matching the current criteria.</td></tr>
+                   )}
+                 </tbody>
+               </table>
+              </div>
+              
+              {/* Pagination Controls */}
+              {pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between px-8 py-4 border-t border-black/10 bg-zinc-50">
+                  <p className="text-sm font-medium text-zinc-500">Showing <strong className="text-black">{((pagination.page - 1) * pagination.limit) + 1}</strong> to <strong className="text-black">{Math.min(pagination.page * pagination.limit, pagination.total)}</strong> of <strong className="text-black">{pagination.total}</strong> results</p>
+                  <div className="flex gap-2">
+                    <button 
+                      disabled={pagination.page <= 1} 
+                      onClick={() => fetchUsers(pagination.page - 1)}
+                      className="px-4 py-2 border border-black/20 rounded-xl text-sm font-bold bg-white hover:bg-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-black shadow-sm"
+                    >
+                      Previous
+                    </button>
+                    <button 
+                      disabled={pagination.page >= pagination.totalPages} 
+                      onClick={() => fetchUsers(pagination.page + 1)}
+                      className="px-4 py-2 border border-black/20 rounded-xl text-sm font-bold bg-white hover:bg-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-black shadow-sm"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
